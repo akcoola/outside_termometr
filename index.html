@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Градусник</title>
+  <title>Р“СЂР°РґСѓСЃРЅРёРє</title>
 
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#ffffff">
@@ -70,24 +70,24 @@
 <div class="container">
 
   <div id="settings" class="settings">
-    <h3>Настройки ThingSpeak</h3>
+    <h3>РќР°СЃС‚СЂРѕР№РєРё ThingSpeak</h3>
 
     <input id="channelInput" placeholder="CHANNEL_ID">
     <input id="apiInput" placeholder="READ API KEY">
 
-    <button onclick="saveSettings()">Сохранить</button>
+    <button onclick="saveSettings()">РЎРѕС…СЂР°РЅРёС‚СЊ</button>
   </div>
 
   <div id="app">
-    <h2>Температура</h2>
+    <h2>РўРµРјРїРµСЂР°С‚СѓСЂР°</h2>
 
     <div class="thermo">
       <div class="mercury" id="mercury"></div>
     </div>
 
-    <div class="value" id="value">Загрузка...</div>
+    <div class="value" id="value">Р—Р°РіСЂСѓР·РєР°...</div>
 
-    <button onclick="openSettings()">Настройки</button>
+    <button onclick="openSettings()">РќР°СЃС‚СЂРѕР№РєРё</button>
   </div>
 
 </div>
@@ -109,7 +109,7 @@
     API_KEY = document.getElementById('apiInput').value.trim();
 
     if (!CHANNEL_ID || !API_KEY) {
-      alert('Введите CHANNEL_ID и API_KEY');
+      alert('Р’РІРµРґРёС‚Рµ CHANNEL_ID Рё API_KEY');
       return;
     }
 
@@ -133,12 +133,12 @@
       const temp = parseFloat(data.field3);
 
       if (!isNaN(temp)) {
-        document.getElementById('value').innerText = temp + ' °C';
+        document.getElementById('value').innerText = temp + ' В°C';
         const level = Math.min(Math.max(temp, 0), 50) * 2;
         document.getElementById('mercury').style.height = level + '%';
       }
     } catch {
-      document.getElementById('value').innerText = 'Ошибка';
+      document.getElementById('value').innerText = 'РћС€РёР±РєР°';
     }
   }
 
