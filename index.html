@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Температурный монитор ThingSpeak</title>
+    <title>Метеостанция Казанка</title>
     <meta name="theme-color" content="#0a192f">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -274,7 +274,7 @@
             color: #64ffda;
         }
 
-        /* График */
+        /* Контейнер графика */
         .chart-container {
             height: 250px;
             background: rgba(10, 25, 47, 0.5);
@@ -285,17 +285,45 @@
             overflow: hidden;
         }
 
+        /* Элементы управления графиком */
+        .chart-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            position: relative;
+        }
+
         .chart-title {
-            position: absolute;
-            top: 10px;
-            left: 15px;
             font-size: 0.9rem;
             opacity: 0.7;
         }
 
+        .interval-select {
+            background: rgba(10, 25, 47, 0.8);
+            color: #64ffda;
+            border: 1px solid rgba(100, 255, 218, 0.3);
+            border-radius: 8px;
+            padding: 8px 15px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            outline: none;
+            min-width: 120px;
+        }
+
+        .interval-select:focus {
+            border-color: #64ffda;
+            box-shadow: 0 0 10px rgba(100, 255, 218, 0.2);
+        }
+
+        .interval-select option {
+            background: #112240;
+            color: #e6f1ff;
+        }
+
         #temperatureChart {
             width: 100%;
-            height: 100%;
+            height: calc(100% - 40px);
         }
 
         /* Кнопки управления */
@@ -410,6 +438,16 @@
                 flex-direction: column;
                 gap: 15px;
             }
+            
+            .chart-controls {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            
+            .interval-select {
+                width: 100%;
+            }
         }
 
         /* Время последнего обновления */
@@ -484,8 +522,7 @@
 
     <div class="container">
         <header>
-            <h1><i class="fas fa-temperature-high"></i> ТЕМПЕРАТУРНЫЙ МОНИТОР</h1>
-            <p class="subtitle">Мониторинг температуры с ThingSpeak в реальном времени</p>
+            <h1><i class="fas fa-temperature-high"></i> Метеостанция Казанка </h1>
         </header>
 
         <div class="main-content">
@@ -547,7 +584,7 @@
                     </div>
                     <div class="stat-card">
                         <div class="stat-label">
-                            <i class="fas fa-arrows-alt-v"></i> Диапазон
+                            <i class="fas fa-arrows-alt-v"></i> Дельта (мин-макс)
                         </div>
                         <div class="stat-value" id="tempRange">--°C</div>
                     </div>
@@ -560,7 +597,17 @@
                 </div>
 
                 <div class="chart-container">
-                    <div class="chart-title">История температуры (24ч)</div>
+                    <div class="chart-controls">
+                        <div class="chart-title">История температуры</div>
+                        <select id="intervalSelect" class="interval-select">
+							<option value="0.25">15 мин</option>
+                            <option value="0.5">30 мин</option>
+							<option value="1">1 час</option>
+                            <option value="6">6 часов</option>
+                            <option value="24">24 часа</option>
+                            <option value="72">3 дня</option>
+                        </select>
+                    </div>
                     <canvas id="temperatureChart"></canvas>
                 </div>
 
@@ -581,8 +628,8 @@
         <i class="fas fa-plug"></i>
         <span>Отключено</span>
     </div>
-
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script>
         // Конфигурация PWA
         if ('serviceWorker' in navigator) {
@@ -646,6 +693,7 @@
         };
         let isConnected = false;
         let lastUpdateTime = null;
+        let selectedInterval = 24; // По умолчанию 24 часа
         
         // DOM элементы
         const configOverlay = document.getElementById('configOverlay');
@@ -669,28 +717,28 @@
         const pressureValue = document.getElementById('pressureValue');
         const updateTime = document.getElementById('updateTime');
         const lastUpdate = document.getElementById('lastUpdate');
+        const intervalSelect = document.getElementById('intervalSelect');
         
         // Инициализация графика
         let tempChart;
         function initChart() {
             const ctx = document.getElementById('temperatureChart').getContext('2d');
-            
+        
             tempChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: Array.from({length: 24}, (_, i) => `${i}:00`),
                     datasets: [{
                         label: 'Температура °C',
-                        data: Array(24).fill(null),
+                        data: [],
                         borderColor: '#64ffda',
                         backgroundColor: 'rgba(100, 255, 218, 0.1)',
                         borderWidth: 3,
                         fill: true,
                         tension: 0.4,
-                        pointBackgroundColor: '#57cbff',
-                        pointBorderColor: '#ffffff',
-                        pointBorderWidth: 2,
-                        pointRadius: 5
+                        pointRadius: 3,
+                        pointBackgroundColor: '#64ffda',
+                        pointBorderColor: '#0a192f',
+                        pointBorderWidth: 2
                     }]
                 },
                 options: {
@@ -699,22 +747,55 @@
                     plugins: {
                         legend: { display: false },
                         tooltip: {
+                            mode: 'index',
+                            intersect: false,
                             backgroundColor: 'rgba(10, 25, 47, 0.9)',
                             titleColor: '#64ffda',
                             bodyColor: '#e6f1ff',
                             borderColor: '#64ffda',
-                            borderWidth: 1
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    return `Температура: ${context.parsed.y.toFixed(1)}°C`;
+                                }
+                            }
                         }
                     },
                     scales: {
                         x: {
-                            grid: { color: 'rgba(100, 255, 218, 0.1)' },
-                            ticks: { color: '#8892b0' }
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'HH:mm'
+                                },
+                                tooltipFormat: 'dd.MM HH:mm'
+                            },
+                            ticks: { 
+                                color: '#8892b0',
+                                maxRotation: 0
+                            },
+                            grid: { 
+                                color: 'rgba(100, 255, 218, 0.1)',
+                                drawBorder: false
+                            }
                         },
                         y: {
-                            grid: { color: 'rgba(100, 255, 218, 0.1)' },
-                            ticks: { color: '#8892b0' }
+                            ticks: { 
+                                color: '#8892b0',
+                                callback: function(value) {
+                                    return value + '°C';
+                                }
+                            },
+                            grid: { 
+                                color: 'rgba(100, 255, 218, 0.1)',
+                                drawBorder: false
+                            }
                         }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'nearest'
                     }
                 }
             });
@@ -731,6 +812,21 @@
                 return true;
             }
             return false;
+        }
+        
+        // Загрузка интервала из localStorage
+        function loadInterval() {
+            const savedInterval = localStorage.getItem('chartInterval');
+            if (savedInterval) {
+                selectedInterval = parseFloat(savedInterval);
+                intervalSelect.value = selectedInterval;
+            }
+        }
+        
+        // Сохранение интервала в localStorage
+        function saveInterval() {
+            selectedInterval = parseFloat(intervalSelect.value);
+            localStorage.setItem('chartInterval', selectedInterval);
         }
         
         // Сохранение конфигурации
@@ -807,21 +903,64 @@
         // Получение истории данных
         async function fetchHistory() {
             try {
-                const url = `https://api.thingspeak.com/channels/${config.channelId}/fields/${config.fieldNumber}.json?results=24&api_key=${config.apiKey}`;
+                // Используем сохраненный интервал
+                const hours = selectedInterval;
+                const results = Math.min(hours * 60, 8000); // Ограничение ThingSpeak API
+                
+                const url = `https://api.thingspeak.com/channels/${config.channelId}/fields/${config.fieldNumber}.json?results=${results}&api_key=${config.apiKey}`;
                 const response = await fetch(url);
                 const data = await response.json();
-                
-                if (data.feeds && data.feeds.length > 0) {
-                    tempHistory = data.feeds.map(feed => {
-                        const temp = parseFloat(feed[`field${config.fieldNumber}`]);
-                        return !isNaN(temp) ? temp : null;
-                    }).filter(val => val !== null);
-                    
-                    if (tempHistory.length > 0) {
-                        updateChart();
-                        updateStats();
+
+                if (!data.feeds || data.feeds.length === 0) return;
+
+                const MAX_DELTA = 3; // °C
+                const MAX_GAP_MS = 5 * 60 * 1000; // 5 минут
+
+                let lastValue = null;
+                let lastTime = null;
+
+                const filteredPoints = [];
+
+                for (const feed of data.feeds) {
+                    const rawTemp = parseFloat(feed[`field${config.fieldNumber}`]);
+                    if (isNaN(rawTemp)) continue;
+
+                    const time = new Date(feed.created_at).getTime();
+
+                    // первая точка или сброс фильтра
+                    if (lastValue === null || (time - lastTime) > MAX_GAP_MS) {
+                        lastValue = rawTemp;
+                        lastTime = time;
+                        filteredPoints.push({ x: new Date(time), y: rawTemp });
+                        continue;
                     }
+
+                    // фильтр по скачку
+                    if (Math.abs(rawTemp - lastValue) > MAX_DELTA) {
+                        // берём предыдущее значение
+                        filteredPoints.push({ x: new Date(time), y: lastValue });
+                    } else {
+                        lastValue = rawTemp;
+                        filteredPoints.push({ x: new Date(time), y: rawTemp });
+                    }
+
+                    lastTime = time;
                 }
+
+                if (filteredPoints.length === 0) return;
+
+                // Обрезаем данные по времени, если нужно
+                const cutoffTime = new Date().getTime() - (hours * 60 * 60 * 1000);
+                const recentPoints = filteredPoints.filter(point => 
+                    point.x.getTime() > cutoffTime
+                );
+
+                // сохраняем историю ТОЛЬКО отфильтрованную
+                tempHistory = recentPoints.map(p => p.y);
+
+                updateChart(recentPoints);
+                updateStats();
+
             } catch (error) {
                 console.error('Ошибка получения истории:', error);
             }
@@ -854,47 +993,143 @@
             }, 500);
         }
         
-        // Обновление статуса температуры
+        // Обновление статуса температуры (−50 … +40)
         function updateTempStatus(temp) {
             let statusText, statusIcon, statusColor;
-            
-            if (temp < -10) {
-                statusText = 'Экстремальный холод';
+        
+            if (temp <= -50) {
+                statusText = 'АДСКИЙ МОРОЗ';
+                statusIcon = '🥶';
+                statusColor = '#1b4f72';
+            } else if (temp <= -45) {
+                statusText = 'Смертельный холод';
+                statusIcon = '🥶';
+                statusColor = '#21618c';
+            } else if (temp <= -40) {
+                statusText = 'Экстремальный мороз';
                 statusIcon = '❄️';
+                statusColor = '#2874a6';
+            } else if (temp <= -35) {
+                statusText = 'Лютый мороз';
+                statusIcon = '❄️';
+                statusColor = '#2e86c1';
+            } else if (temp <= -30) {
+                statusText = 'Очень сильный мороз';
+                statusIcon = '🧊';
                 statusColor = '#3498db';
-            } else if (temp < 0) {
-                statusText = 'Мороз';
-                statusIcon = '⛄';
-                statusColor = '#2ecc71';
-            } else if (temp < 15) {
+            } else if (temp <= -25) {
+                statusText = 'Сильный мороз';
+                statusIcon = '🧊';
+                statusColor = '#5dade2';
+            } else if (temp <= -20) {
+                statusText = 'Морозно';
+                statusIcon = '🧣';
+                statusColor = '#85c1e9';
+            } else if (temp <= -15) {
+                statusText = 'Сильный холод';
+                statusIcon = '🧣';
+                statusColor = '#aed6f1';
+            } else if (temp <= -10) {
+                statusText = 'Холодно';
+                statusIcon = '❄️';
+                statusColor = '#d6eaf8';
+            } else if (temp <= -5) {
+                statusText = 'Лёгкий мороз';
+                statusIcon = '🌬';
+                statusColor = '#ebf5fb';
+            } else if (temp <= 0) {
+                statusText = 'Точка замерзания';
+                statusIcon = '💧';
+                statusColor = '#fdfefe';
+            } else if (temp <= 5) {
                 statusText = 'Прохладно';
+                statusIcon = '🌫';
+                statusColor = '#d5f5e3';
+            } else if (temp <= 10) {
+                statusText = 'Свежо';
                 statusIcon = '🍃';
-                statusColor = '#f1c40f';
-            } else if (temp < 25) {
+                statusColor = '#abebc6';
+            } else if (temp <= 15) {
+                statusText = 'Умеренно тепло';
+                statusIcon = '🌱';
+                statusColor = '#7dcea0';
+            } else if (temp <= 20) {
                 statusText = 'Комфортно';
                 statusIcon = '😊';
-                statusColor = '#e67e22';
-            } else if (temp < 35) {
-                statusText = 'Тепло';
+                statusColor = '#f9e79f';
+            } else if (temp <= 25) {
+                statusText = 'Очень комфортно';
+                statusIcon = '😌';
+                statusColor = '#f7dc6f';
+            } else if (temp <= 30) {
+                statusText = 'Жарко';
                 statusIcon = '☀️';
+                statusColor = '#f5b041';
+            } else if (temp <= 35) {
+                statusText = 'Очень жарко';
+                statusIcon = '🔥';
+                statusColor = '#eb984e';
+            } else if (temp <= 40) {
+                statusText = 'АДСКАЯ ЖАРА';
+                statusIcon = '🔥';
                 statusColor = '#e74c3c';
             } else {
-                statusText = 'Жара';
-                statusIcon = '🔥';
-                statusColor = '#c0392b';
+                statusText = 'КРИТИЧЕСКАЯ ТЕМПЕРАТУРА';
+                statusIcon = '☠️';
+                statusColor = '#922b21';
             }
-            
+        
             tempStatus.innerHTML = `${statusIcon} ${statusText}`;
             tempStatus.style.color = statusColor;
         }
         
         // Обновление графика
-        function updateChart() {
-            if (tempHistory.length > 0) {
-                tempChart.data.datasets[0].data = [...tempHistory];
-                tempChart.update();
-            }
+function updateChart(points) {
+    if (!points.length) return;
+
+    const values = points.map(p => p.y);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const padding = (max - min) * 0.1 || 1;
+
+    tempChart.data.datasets[0].data = points;
+
+    // Настраиваем формат времени в зависимости от интервала
+    let timeUnit, timeFormat;
+    if (selectedInterval <= 6) {
+        timeUnit = 'hour';
+        timeFormat = 'HH:mm';
+    } else if (selectedInterval <= 24) {
+        timeUnit = 'hour';
+        timeFormat = 'HH:mm';
+    } else {
+        timeUnit = 'day';
+        timeFormat = 'dd.MM';
+    }
+
+    tempChart.options.scales.x.time.unit = timeUnit;
+    tempChart.options.scales.x.time.displayFormats = {
+        [timeUnit]: timeFormat
+    };
+    tempChart.options.scales.x.time.tooltipFormat = 'dd.MM HH:mm';
+
+    // Обновляем форматирование значений на оси Y
+    tempChart.options.scales.y.ticks.callback = function(value) {
+        return parseFloat(value.toFixed(1)) + '°C';
+    };
+
+    tempChart.options.scales.y.min = min - padding;
+    tempChart.options.scales.y.max = max + padding;
+
+    // Обновляем форматирование tooltip
+    tempChart.options.plugins.tooltip.callbacks = {
+        label: function(context) {
+            return `Температура: ${parseFloat(context.parsed.y.toFixed(1))}°C`;
         }
+    };
+
+    tempChart.update();
+}
         
         // Обновление статистики
         function updateStats() {
@@ -902,7 +1137,7 @@
                 const min = Math.min(...tempHistory);
                 const max = Math.max(...tempHistory);
                 const change = tempHistory.length > 1 ? 
-                    tempHistory[tempHistory.length - 1] - tempHistory[tempHistory.length - 2] : 0;
+                    tempHistory[tempHistory.length - 1] - tempHistory[tempHistory.length - 60] : 0;
                 const range = max - min;
                 const avg = tempHistory.reduce((a, b) => a + b, 0) / tempHistory.length;
                 
@@ -982,6 +1217,9 @@
             // Загружаем конфигурацию
             const hasConfig = loadConfig();
             
+            // Загружаем сохраненный интервал
+            loadInterval();
+            
             // Показываем форму настроек если нет сохраненной конфигурации
             if (!hasConfig) {
                 showConfigForm();
@@ -995,6 +1233,12 @@
             cancelBtn.addEventListener('click', hideConfigForm);
             settingsBtn.addEventListener('click', showConfigForm);
             refreshBtn.addEventListener('click', fetchTemperature);
+            
+            // Обработчик изменения интервала
+            intervalSelect.addEventListener('change', function() {
+                saveInterval();
+                fetchTemperature();
+            });
             
             // Автообновление каждые 30 секунд
             setInterval(() => {
